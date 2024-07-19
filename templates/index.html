@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Empathy Analyzer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h1>Empathy Analyzer</h1>
+    <form id="uploadForm">
+        <div>
+            <label for="audioFile">Audio File:</label>
+            <input type="file" id="audioFile" accept="audio/*" required>
+        </div>
+        <div>
+            <label for="transcriptFile">Transcript File:</label>
+            <input type="file" id="transcriptFile" accept=".txt" required>
+        </div>
+        <button type="submit">Analyze</button>
+    </form>
+    <div id="result"></div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Analyzing...';
+
+            const formData = new FormData();
+            formData.append('audio', document.getElementById('audioFile').files[0]);
+            formData.append('transcript', document.getElementById('transcriptFile').files[0]);
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                let resultHTML = '<h2>Analysis Result</h2>';
+
+                if (data.error) {
+                    resultHTML += `<p class="error">Error: ${data.error}</p>`;
+                } else {
+                    resultHTML += `
+                        <p><strong>Empathy Level:</strong> ${data.empathy_level || 'Not available'}</p>
+                        <p><strong>Tone Analysis:</strong> ${data.tone_analysis || 'Not available'}</p>
+                    `;
+
+                    if (Array.isArray(data.improvement_areas) && data.improvement_areas.length > 0) {
+                        resultHTML += `
+                            <h3>Areas for Improvement:</h3>
+                            <ul>
+                                ${data.improvement_areas.map(area => `<li>${area}</li>`).join('')}
+                            </ul>
+                        `;
+                    } else {
+                        resultHTML += '<p>No specific areas for improvement identified.</p>';
+                    }
+
+                    if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+                        resultHTML += `
+                            <h3>Suggestions:</h3>
+                            <ul>
+                                ${data.suggestions.map(suggestion => `<li>${suggestion}</li>`).join('')}
+                            </ul>
+                        `;
+                    } else {
+                        resultHTML += '<p>No specific suggestions available.</p>';
+                    }
+                }
+
+                resultDiv.innerHTML = resultHTML;
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `<p class="error">An error occurred: ${error.message}</p>`;
+            }
+        });
+    </script>
+</body>
+</html>
