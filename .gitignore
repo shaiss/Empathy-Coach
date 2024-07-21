@@ -166,6 +166,7 @@ cython_debug/
 *.mp3
 *.ogg
 *.flac
+*.mp4
 
 # Ignore database files
 *.db
