@@ -27,9 +27,10 @@ def transcribe_file(file):
 
     try:
         response = deepgram.listen.prerecorded.v("1").transcribe_file(payload, options)
-        logger.info(f"Deepgram API response: {response}")
+        
         return response["results"]["channels"][0]["alternatives"][0]["transcript"]
 
     except Exception as e:
         logger.error(f"Exception in transcribe_file: {e}")
+        logger.info(f"Deepgram API response: {response}")
         raise
