@@ -5,56 +5,69 @@ from nltk.probability import FreqDist
 from nltk.sentiment import SentimentIntensityAnalyzer
 from nltk.tokenize import sent_tokenize, word_tokenize
 from textstat import textstat
+from modules.logger import setup_logger
 
-nltk.download('punkt')
-nltk.download('stopwords')
-nltk.download('vader_lexicon')
+# Setup logging
+logger = setup_logger('text_analysis_logger', 'logs/text_analysis.log')
+
+nltk.download('punkt', quiet=True)
+nltk.download('stopwords', quiet=True)
+nltk.download('vader_lexicon', quiet=True)
 
 nlp = spacy.load('en_core_web_sm')
 
 def analyze_text(transcript):
-    # Tokenize and remove stopwords
-    stop_words = set(stopwords.words('english'))
-    words = [w.lower() for w in word_tokenize(transcript) if w.isalnum()]
-    filtered_words = [w for w in words if w not in stop_words]
+    try:
+        logger.info('Starting text analysis')
 
-    # Perform sentiment analysis
-    sia = SentimentIntensityAnalyzer()
-    sentiment_scores = sia.polarity_scores(transcript)
+        # Tokenize and remove stopwords
+        stop_words = set(stopwords.words('english'))
+        words = [w.lower() for w in word_tokenize(transcript) if w.isalnum()]
+        filtered_words = [w for w in words if w not in stop_words]
 
-    # Count word frequency
-    word_freq = FreqDist(filtered_words)
+        # Perform sentiment analysis
+        sia = SentimentIntensityAnalyzer()
+        sentiment_scores = sia.polarity_scores(transcript)
 
-    # Readability and complexity metrics
-    readability_scores = {
-        "flesch_reading_ease": textstat.flesch_reading_ease(transcript),
-        "flesch_kincaid_grade": textstat.flesch_kincaid_grade(transcript),
-        "gunning_fog": textstat.gunning_fog(transcript)
-    }
+        # Count word frequency
+        word_freq = FreqDist(filtered_words)
 
-    # Sentence structure analysis
-    sentence_analysis = analyze_sentence_structure(transcript)
+        # Readability and complexity metrics
+        readability_scores = {
+            "flesch_reading_ease": textstat.flesch_reading_ease(transcript),
+            "flesch_kincaid_grade": textstat.flesch_kincaid_grade(transcript),
+            "gunning_fog": textstat.gunning_fog(transcript)
+        }
 
-    # Named Entity Recognition
-    ner_analysis = analyze_named_entities(transcript)
+        # Sentence structure analysis
+        sentence_analysis = analyze_sentence_structure(transcript)
 
-    # Lexical diversity
-    lexical_diversity = len(set(filtered_words)) / len(filtered_words) if filtered_words else 0
+        # Named Entity Recognition
+        ner_analysis = analyze_named_entities(transcript)
 
-    # Emotion analysis using VADER
-    emotion_analysis = analyze_emotions(transcript)
+        # Lexical diversity
+        lexical_diversity = len(set(filtered_words)) / len(filtered_words) if filtered_words else 0
 
-    return {
-        "sentiment": sentiment_scores,
-        "word_count": len(words),
-        "unique_words": len(set(filtered_words)),
-        "top_words": dict(word_freq.most_common(10)),
-        "emotion_analysis": emotion_analysis,
-        "readability_scores": readability_scores,
-        "sentence_analysis": sentence_analysis,
-        "named_entities": ner_analysis,
-        "lexical_diversity": lexical_diversity
-    }
+        # Emotion analysis using VADER
+        emotion_analysis = analyze_emotions(transcript)
+
+        features = {
+            "sentiment": sentiment_scores,
+            "word_count": len(words),
+            "unique_words": len(set(filtered_words)),
+            "top_words": dict(word_freq.most_common(10)),
+            "emotion_analysis": emotion_analysis,
+            "readability_scores": readability_scores,
+            "sentence_analysis": sentence_analysis,
+            "named_entities": ner_analysis,
+            "lexical_diversity": lexical_diversity
+        }
+
+        logger.info('Completed text analysis')
+        return features
+    except Exception as e:
+        logger.error(f'Error during text analysis: {str(e)}')
+        raise
 
 def analyze_emotions(text):
     sia = SentimentIntensityAnalyzer()

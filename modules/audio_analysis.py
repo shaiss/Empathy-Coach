@@ -1,93 +1,76 @@
 import librosa
 import numpy as np
+import logging
 
-def analyze_audio(audio_file):
-    # Load the audio file
-    y, sr = librosa.load(audio_file)
+logger = logging.getLogger('audio_analysis_logger')
+logging.basicConfig(level=logging.INFO)
 
-    # Extract features
-    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-    spectral_centroids = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
-    spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)[0]
-    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+def analyze_audio(file_path):
+    logger.info(f'Starting audio analysis for file: {file_path}')
 
-    # Pitch and pitch variability
-    pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
-    pitch_mean = np.mean(pitches[pitches > 0]) if np.any(pitches > 0) else 0
-    pitch_std = np.std(pitches[pitches > 0]) if np.any(pitches > 0) else 0
+    try:
+        # Load the audio file
+        y, sr = librosa.load(file_path)
 
-    # Energy and energy variability
-    rms = librosa.feature.rms(y=y)[0]
-    energy_mean = np.mean(rms)
-    energy_std = np.std(rms)
+        # Extract features
+        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+        spectral_centroids = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
+        spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)[0]
+        zero_crossing_rate = librosa.feature.zero_crossing_rate(y)[0]
+        mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+        chroma = librosa.feature.chroma_stft(y=y, sr=sr)
 
-    # Speech rate (syllables per second)
-    syllables = count_syllables(y, sr)
-    duration = librosa.get_duration(y=y, sr=sr)
-    speech_rate = syllables / duration if duration > 0 else 0
+        # Pitch analysis
+        pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
+        pitch_mean = np.mean(pitches[pitches > 0])
+        pitch_variability = np.std(pitches[pitches > 0])
 
-    # Pauses
-    pauses = detect_pauses(y, sr)
+        # Energy analysis
+        energy = librosa.feature.rms(y=y)[0]
+        energy_mean = np.mean(energy)
+        energy_variability = np.std(energy)
 
-    # Voice quality (Harmonics-to-Noise Ratio)
-    hnr = librosa.feature.spectral_flatness(y=y)[0]
-    hnr_mean = np.mean(hnr)
+        # Speech rate (rough estimate)
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+        speech_rate = len(librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr)) / (len(y) / sr)
 
-    # Formants (simplified estimation)
-    formants = estimate_formants(y, sr)
+        # Pause analysis (rough estimate)
+        silence_threshold = 0.1 * np.max(y)
+        pauses = librosa.effects.split(y, top_db=silence_threshold)
+        pause_count = len(pauses) - 1
+        pause_duration_mean = np.mean([pause[0] - pauses[i-1][1] for i, pause in enumerate(pauses[1:], 1)]) / sr if pause_count > 0 else 0
 
-    return {
-        "tempo": tempo,
-        "spectral_centroid": np.mean(spectral_centroids),
-        "spectral_rolloff": np.mean(spectral_rolloff),
-        "mfccs": np.mean(mfccs, axis=1).tolist(),
-        "pitch_mean": pitch_mean,
-        "pitch_variability": pitch_std,
-        "energy_mean": energy_mean,
-        "energy_variability": energy_std,
-        "speech_rate": speech_rate,
-        "pause_count": len(pauses),
-        "pause_duration_mean": np.mean(pauses) if pauses else 0,
-        "voice_quality_hnr": hnr_mean,
-        "formants": formants
-    }
+        # Voice quality (Harmonics-to-Noise Ratio, rough estimate)
+        voice_quality_hnr = np.mean(librosa.effects.harmonic(y)) / np.mean(librosa.effects.percussive(y))
 
-def count_syllables(y, sr):
-    # This is a simple estimation. For more accurate results, consider using a dedicated syllable counter.
-    energy = librosa.feature.rms(y=y)[0]
-    peaks = librosa.util.peak_pick(energy, pre_max=3, post_max=3, pre_avg=3, post_avg=3, delta=0.5, wait=10)
-    return len(peaks)
+        # Formants (rough estimate)
+        formants = librosa.lpc(y, order=5)[1:]
 
-def detect_pauses(y, sr, threshold_db=-30, min_pause_duration=0.5):
-    # Convert to dB
-    y_db = librosa.amplitude_to_db(np.abs(y), ref=np.max)
+        # Calculate means for features used in proposed code
+        mfccs_mean = np.mean(mfccs, axis=1)
+        spectral_centroid_mean = np.mean(spectral_centroids)
+        chroma_mean = np.mean(chroma, axis=1)
 
-    # Find pauses
-    is_pause = y_db < threshold_db
-    pause_samples = np.where(is_pause)[0]
+        features = {
+            'tempo': float(tempo) if np.isscalar(tempo) else float(tempo[0]),
+            'spectral_centroid': float(spectral_centroid_mean),
+            'spectral_rolloff': float(np.mean(spectral_rolloff)),
+            'zero_crossing_rate_mean': float(np.mean(zero_crossing_rate)),
+            'mfccs': mfccs_mean.tolist(),  # Convert to list for JSON serialization
+            'pitch_mean': float(pitch_mean),
+            'pitch_variability': float(pitch_variability),
+            'energy_mean': float(energy_mean),
+            'energy_variability': float(energy_variability),
+            'speech_rate': float(speech_rate),
+            'pause_count': int(pause_count),
+            'pause_duration_mean': float(pause_duration_mean),
+            'voice_quality_hnr': float(voice_quality_hnr),
+            'formants': [float(f) for f in formants],
+            'chroma': chroma_mean.tolist()  # Convert to list for JSON serialization
+        }
 
-    # Group consecutive pause samples
-    pause_groups = np.split(pause_samples, np.where(np.diff(pause_samples) != 1)[0] + 1)
-
-    # Convert to seconds and filter by minimum duration
-    pauses = [
-        (len(group) / sr) for group in pause_groups
-        if (len(group) / sr) >= min_pause_duration
-    ]
-
-    return pauses
-
-def estimate_formants(y, sr, n_formants=4):
-    # This is a simplified method. For more accurate results, consider using specialized libraries.
-    n_fft = 2048
-    S = librosa.stft(y, n_fft=n_fft)
-    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
-
-    magnitudes = np.abs(S)
-    formants = []
-
-    for i in range(n_formants):
-        peak_freq = freqs[np.argmax(magnitudes[:, i])]
-        formants.append(peak_freq)
-
-    return formants
+        logger.info(f'Completed audio analysis for file: {file_path}')
+        return features
+    except Exception as e:
+        logger.error(f'Error during audio analysis: {str(e)}')
+        raise
